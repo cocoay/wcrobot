@@ -94,7 +94,7 @@ class DBManager(SQLBase):
     where %s"""
 
     def __init__(self):
-        SQLBase.__init__(self)
+        super().__init__()
         self.creat_tabel()
 
     def creat_tabel(self):
