@@ -5,14 +5,20 @@ import os
 import itchat
 from itchat.content import TEXT, PICTURE, CARD
 from constant import pkl_path, qr_path, pic_dir, cmd_user_name
+from constant import use_mq, mq_queue
 from log import gen_logger
-from tools import msg_repeated, clear_db_task
+from tools import msg_repeated, clear_db_task, msg2json, json2msg
 from user_manager import UserManager
+if use_mq:
+    from mq_manager import MQProducer, MQConsumer
+    import threading
 
 
 logger = gen_logger("logger.py")
 # UserManager对象
 user_m = UserManager()
+if use_mq:
+    mq_p = MQProducer(mq_queue)
 
 
 def log_card(msg):
@@ -25,18 +31,22 @@ def log_card(msg):
     [TEXT, PICTURE, CARD], isFriendChat=True, isGroupChat=True)
 def msg_reply(msg):
     '''接收消息'''
-    msg_type = msg.type
+    msg_type = msg.get('Type')
     if msg_type == CARD:
         # 名片消息
         log_card(msg)
     else:
         # 文字消息、图片消息
-        # 处理控制命令
-        is_control = handle_cmd(msg, msg_type)
-        if is_control:
-            return
-        # 处理消息
-        handle_msg(msg)
+        if use_mq:
+            j = msg2json(msg)
+            mq_p.publish(j)
+        else:
+            # 处理控制命令
+            is_control = handle_cmd(msg, msg_type)
+            if is_control:
+                return
+            # 处理消息
+            handle_msg(msg)
 
 
 def handle_cmd(msg, msg_type):
@@ -51,7 +61,7 @@ def handle_cmd(msg, msg_type):
         return False
 
     # 执行命令
-    print(msg.text)
+    print(msg.get('Text'))
     return True
 
 
@@ -88,15 +98,15 @@ def relay_msg(msg, users):
     if not s_user_name:
         s_user_name = '未知发送人'
 
-    msg_type = msg.type
+    msg_type = msg.get('Type')
     # 文本消息内容
     content = None
     file_path = None
     if msg_type == TEXT:
-        content = msg.text + "\n【消息来自】 " + s_user_name
+        content = msg.get('Text') + "\n【消息来自】 " + s_user_name
     else:
         content = "【图片消息来自】" + s_user_name
-        file_path = "@img@" + os.path.join(pic_dir, msg.fileName)
+        file_path = "@img@" + os.path.join(pic_dir, msg.get('FileName'))
 
     ok_list = []
     for user in v:
@@ -137,11 +147,32 @@ def login_wechat():
     itchat.run()
 
 
+def consumer_task():
+    '''消费者任务'''
+    def callback(body):
+        msg = json2msg(body)
+        msg_type = msg.get('Type')
+        # 处理控制命令
+        is_control = handle_cmd(msg, msg_type)
+        if is_control:
+            return
+        # 处理消息
+        handle_msg(msg)
+
+    mq_c = MQConsumer(mq_queue, callback=callback)
+    mq_c.start_consuming()
+
+
 def main():
     # 定时任务
     clear_db_task()
-
-    login_wechat()
+    if use_mq:
+        t1 = threading.Thread(target=login_wechat)
+        t2 = threading.Thread(target=consumer_task)
+        t1.start()
+        t2.start()
+    else:
+        login_wechat()
 
 
 if __name__ == '__main__':

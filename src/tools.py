@@ -3,12 +3,13 @@
 
 from hashlib import md5
 import os
-# import json
+import json
+import itchat
 from itchat.content import TEXT, PICTURE
+from itchat.components.messages import get_download_fn
 from apscheduler.schedulers.background import BackgroundScheduler
 from db_manager import DBManager
 from constant import pic_dir, task_time
-
 
 # 判断文件夹是否存在，不存在就创建
 if not os.path.exists(pic_dir):
@@ -37,20 +38,21 @@ def get_dbm(dbm=DBManager()):
 
 def msg_repeated(msg):
     '''消息是否重复'''
-    msg_type = msg.type
+    msg_type = msg.get('Type')
     md5 = None
     if msg_type == TEXT:
         # 文本类型
-        md5 = get_md5(msg.text)
+        md5 = get_md5(msg.get('Text'))
         r = get_dbm().query_item_md5(md5)
         if r:
             return True
     elif msg_type == PICTURE:
         # 图片类型
         # 储存路径
-        file_path = os.path.join(pic_dir, msg.fileName)
+        file_path = os.path.join(pic_dir, msg.get('FileName'))
         # 下载图片
-        msg.download(file_path)
+        download = msg.get('download')
+        download(file_path)
         md5 = get_md5(file_path, True)
         r = get_dbm().query_item_md5(md5)
         if r:
@@ -65,13 +67,45 @@ def msg_repeated(msg):
 # 也可以使用functools.partial
 def get_insert_md5(tpy, md5):
     '''插入数据库'''
+
     def insert_md5():
         return get_dbm().insert_item(TEXT, md5)
+
     return insert_md5
+
+
+def msg2json(msg):
+    '''消息转json字符串'''
+    items = {}
+    items['FromUserName'] = msg.get('FromUserName')
+    items['ToUserName'] = msg.get('ToUserName')
+    items['ActualUserName'] = msg.get('ActualUserName')
+    items['NewMsgId'] = msg.get('NewMsgId')
+    items['Type'] = msg.get('Type')
+    text = msg.get('Text')
+    if isinstance(text, str):
+        items['Text'] = text
+    else:
+        items['Text'] = None
+        items['FileName'] = msg.get('FileName')
+    s = json.dumps(items)
+    return s
+
+
+def json2msg(b):
+    '''json字符串转消息'''
+    j = b.decode()
+    msg = json.loads(j)
+    core = itchat.originInstance
+    download_fn = get_download_fn(
+        core, '%s/webwxgetmsgimg' % core.loginInfo.get('url'), msg['NewMsgId'])
+    msg['download'] = download_fn
+    return msg
 
 
 def clear_db_task():
     '''定时任务清空数据库'''
+
     def work():
         get_dbm().clear_tabel()
 
