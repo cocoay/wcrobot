@@ -1,0 +1,33 @@
+# - 
+#   sender: #消息发送人
+#     - 
+#       remarkName: A #备注
+#       name: a #真实姓名
+#     - 
+#       remarkName: B
+#       name: b
+#     - 
+#       isChatRoom: True #群组
+#       roomName: E #群组名称
+#   receiver: #消息接收人
+#     - 
+#       remarkName: C
+#       name: c
+#     - 
+#       remarkName: D
+#       name: ~
+#     - 
+#       isChatRoom: True
+#       roomName: F
+
+# ~ 表示 None 
+
+- 
+  sender:
+    - 
+      remarkName: cocoay
+      name: cocoay
+  receiver: 
+    - 
+      isChatRoom: True
+      roomName: 外卖666
